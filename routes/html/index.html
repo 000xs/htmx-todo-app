@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Tasks</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              sidebar: "#2B4B66",
+            },
+          },
+        },
+      };
+
+      // Global todos array
+      let todos = [];
+
+      // Initialize app
+      document.addEventListener("DOMContentLoaded", function () {
+        validateAuth();
+      });
+
+      // Authentication functions
+      function validateAuth() {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          console.log("No token found");
+          window.location.href = "/login";
+          return;
+        }
+
+        axios
+          .get("/api/auth/validate", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          })
+          .then((response) => {
+            console.log("Server Response:", response.data);
+            const userData = response.data;
+            if (!userData.user_id) {
+              throw new Error("User ID not found in response");
+            }
+            localStorage.setItem("user_id", userData.user_id);
+            renderTodos(userData.user_id);
+          })
+          .catch((error) => {
+            console.error("Authentication failed:", error);
+            localStorage.removeItem("token");
+            window.location.href = "/login";
+          });
+      }
+
+      // Todo CRUD operations
+      function getTodos(userId) {
+        return axios
+          .get(`/api/todo/${userId}`)
+          .then((response) => {
+            todos = response.data;
+            return todos;
+          })
+          .catch((error) => {
+            console.error("Error fetching todos:", error);
+            return [];
+          });
+      }
+
+      function addTodoToDb(task, userId) {
+        return axios
+          .post("/api/todo", { task, userId })
+          .then((response) => {
+            console.log("Todo added successfully:", response.data);
+            return response.data;
+          })
+          .catch((error) => {
+            console.error("Error adding todo:", error);
+            throw error;
+          });
+      }
+
+      function updateTodoStatus(todoId, newStatus) {
+        const updateBody = {
+          todoId: todoId,
+          status: newStatus,
+        };
+
+        return axios
+          .put("/api/todo", updateBody)
+          .then((response) => {
+            console.log("Status updated successfully:", response.data);
+            return response.data;
+          })
+          .catch((error) => {
+            console.error("Error updating status:", error);
+            throw error;
+          });
+      }
+
+      // Usage in changeStatus function
+      function changeStatus(todoId, newStatus) {
+        updateTodoStatus(todoId, newStatus)
+          .then(() => {
+            const userId = localStorage.getItem("user_id");
+            renderTodos(userId);
+          })
+          .catch((error) => {
+            console.error("Failed to update status:", error);
+          });
+      }
+      // UI Event Handlers
+      function addTodo(event) {
+        event.preventDefault();
+        const input = document.getElementById("newTodo");
+        const text = input.value.trim();
+        const userId = localStorage.getItem("user_id");
+
+        if (text && userId) {
+          addTodoToDb(text, userId)
+            .then(() => {
+              input.value = "";
+              renderTodos(userId);
+            })
+            .catch((error) => {
+              console.error("Failed to add todo:", error);
+            });
+        }
+      }
+
+      // Rendering functions
+      function renderTodos(userId) {
+        if (userId === undefined) {
+          return;
+        }
+        getTodos(userId).then((fetchedTodos) => {
+          if (!fetchedTodos || fetchedTodos.length === 0) {
+            setEmptyState();
+            return;
+          }
+
+          const newTodos = fetchedTodos.filter((todo) => todo.status === "new");
+          const inProgressTodos = fetchedTodos.filter(
+            (todo) => todo.status === "in_progress"
+          );
+          const completedTodos = fetchedTodos.filter(
+            (todo) => todo.status === "completed"
+          );
+
+          document.getElementById("newTodos").innerHTML =
+            newTodos.length > 0
+              ? newTodos.map(createTodoHtml).join("")
+              : "<p class='text-gray-500'>No new tasks</p>";
+
+          document.getElementById("inProgressTodos").innerHTML =
+            inProgressTodos.length > 0
+              ? inProgressTodos.map(createTodoHtml).join("")
+              : "<p class='text-gray-500'>No tasks in progress</p>";
+
+          document.getElementById("completedTodos").innerHTML =
+            completedTodos.length > 0
+              ? completedTodos.map(createTodoHtml).join("")
+              : "<p class='text-gray-500'>No completed tasks</p>";
+        });
+      }
+
+      function setEmptyState() {
+        const emptyMessage = "<p class='text-gray-500'>No tasks available</p>";
+        document.getElementById("newTodos").innerHTML = emptyMessage;
+        document.getElementById("inProgressTodos").innerHTML = emptyMessage;
+        document.getElementById("completedTodos").innerHTML = emptyMessage;
+      }
+
+      function createTodoHtml(todo) {
+        return `
+                <div class="border border-gray-200 rounded-lg p-4 flex justify-between items-center">
+                    <p class="flex-grow">${todo.task}</p>
+                    <div class="flex gap-2">
+                        ${
+                          todo.status !== "new"
+                            ? createStatusButton(todo.id, "new", "blue", "eye")
+                            : ""
+                        }
+                        ${
+                          todo.status !== "in_progress"
+                            ? createStatusButton(
+                                todo.id,
+                                "in_progress",
+                                "green",
+                                "arrow-right"
+                              )
+                            : ""
+                        }
+                        ${
+                          todo.status !== "completed"
+                            ? createStatusButton(
+                                todo.id,
+                                "completed",
+                                "yellow",
+                                "check"
+                              )
+                            : ""
+                        }
+                    </div>
+                </div>
+            `;
+      }
+
+      function createStatusButton(todoId, status, color, icon) {
+        const icons = {
+          eye: `<path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />`,
+          "arrow-right": `<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd" />`,
+          check: `<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />`,
+        };
+
+        return `
+            <button onclick="changeStatus('${todoId}', '${status}')"
+                class="p-1 bg-${color}-500 text-white rounded hover:bg-${color}-600" 
+                title="Move to ${
+                  status.charAt(0).toUpperCase() + status.slice(1)
+                }">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    ${icons[icon]}
+                </svg>
+            </button>
+        `;
+      }
+    </script>
+  </head>
+  <body class="flex h-screen bg-gray-50" onload="renderTodos()">
+    <!-- Sidebar -->
+    <nav class="w-16 bg-sidebar flex flex-col items-center py-6 space-y-8">
+      <button class="text-white p-2 hover:bg-white/10 rounded">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="w-6 h-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 6h16M4 12h16M4 18h16"
+          />
+        </svg>
+      </button>
+      <button class="text-white p-2 hover:bg-white/10 rounded">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="w-6 h-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+          />
+        </svg>
+      </button>
+      <button class="text-white p-2 hover:bg-white/10 rounded">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="w-6 h-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+          />
+        </svg>
+      </button>
+      <button class="text-white p-2 hover:bg-white/10 rounded">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="w-6 h-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M13 10V3L4 14h7v7l9-11h-7z"
+          />
+        </svg>
+      </button>
+      <button class="text-white p-2 hover:bg-white/10 rounded">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="w-6 h-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+          />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+          />
+        </svg>
+      </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-8">
+      <h1 class="text-4xl font-bold mb-6">My Tasks</h1>
+
+      <!-- Add New Todo Form -->
+      <form onsubmit="addTodo(event)" class="mb-8">
+        <div class="flex gap-2 max-w-lg">
+          <input
+            type="text"
+            id="newTodo"
+            placeholder="Add a new task..."
+            class="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sidebar"
+            required
+          />
+          <button
+            type="submit"
+            class="p-2 bg-sidebar text-white rounded-lg hover:bg-sidebar/90"
+            title="Add Task"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+          </button>
+        </div>
+      </form>
+
+      <!-- Filter Buttons -->
+      <div class="flex gap-4 mb-8">
+        <button class="px-4 py-2 bg-sidebar text-white rounded-full text-sm">
+          New
+        </button>
+        <button class="px-4 py-2 bg-sidebar text-white rounded-full text-sm">
+          In progress
+        </button>
+        <button class="px-4 py-2 bg-sidebar text-white rounded-full text-sm">
+          Completed
+        </button>
+      </div>
+
+      <!-- Task Columns -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <!-- New Tasks -->
+        <div class="space-y-4">
+          <h2 class="flex items-center gap-2 font-semibold">
+            <span class="w-3 h-3 bg-blue-400 rounded-full"></span>
+            New
+          </h2>
+          <div id="newTodos" class="space-y-4">
+            <!-- New todos will be rendered here -->
+          </div>
+        </div>
+
+        <!-- In Progress Tasks -->
+        <div class="space-y-4">
+          <h2 class="flex items-center gap-2 font-semibold">
+            <span class="w-3 h-3 bg-green-400 rounded-full"></span>
+            in process
+          </h2>
+          <div id="inProgressTodos" class="space-y-4">
+            <!-- In progress todos will be rendered here -->
+          </div>
+        </div>
+
+        <!-- Completed Tasks -->
+        <div class="space-y-4">
+          <h2 class="flex items-center gap-2 font-semibold">
+            <span class="w-3 h-3 bg-yellow-400 rounded-full"></span>
+            Completed
+          </h2>
+          <div id="completedTodos" class="space-y-4">
+            <!-- Completed todos will be rendered here -->
+          </div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

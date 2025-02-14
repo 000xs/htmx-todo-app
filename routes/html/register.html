@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register - HTMX TODO App</title>
+    <script src="https://unpkg.com/htmx.org@1.9.4"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
+  </head>
+  <body class="bg-gray-100 flex justify-center items-center h-screen">
+    <div class="w-full max-w-md bg-white shadow-lg rounded-lg p-6">
+      <h1 class="text-2xl font-bold text-gray-800 mb-4">🔐 Register</h1>
+
+      <form
+        id="register-form"
+        hx-post="http://localhost:3000/api/auth/register"
+        hx-ext="json-enc"
+        hx-headers='{"Content-Type": "application/json"}'
+        hx-target="#response-message"
+        hx-swap="innerHTML"
+        hx-indicator="#loading-indicator"
+        hx-on::after-request="handleResponse(event)"
+      >
+        <input
+          type="text"
+          name="username"
+          required
+          placeholder="Username"
+          class="w-full p-2 border rounded mb-2"
+        />
+        <input
+          type="password"
+          name="password"
+          required
+          placeholder="Password"
+          class="w-full p-2 border rounded mb-2"
+        />
+        <button
+          type="submit"
+          class="mt-2 w-full bg-green-500 text-white py-2 rounded hover:bg-green-600"
+        >
+          Register
+        </button>
+      </form>
+
+      <div id="response-message" class="mt-4 text-center text-gray-700"></div>
+
+      <!-- Alert Messages -->
+      <div
+        id="success-popup"
+        class="hidden fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded shadow-lg"
+      ></div>
+
+      <div
+        id="error-popup"
+        class="hidden fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded shadow-lg"
+      ></div>
+
+      <!-- Loading Indicator -->
+      <div
+        id="loading-indicator"
+        class="htmx-indicator mt-4 hidden text-center text-gray-500"
+      >
+        Registering...
+      </div>
+    </div>
+
+    <script>
+      function handleResponse(event) {
+        const responseText = event.detail.xhr.responseText;
+        console.log("Full Server Response:", responseText);
+
+        try {
+          const data = JSON.parse(responseText);
+
+          if (data.message === "User created successfully" && data.token) {
+            // Show success popup
+            showPopup("success-popup", data.message);
+
+            // Save token in localStorage
+            localStorage.setItem("token", data.token);
+
+            // Redirect after 2 seconds
+            setTimeout(() => {
+              window.location.href = "/";
+            }, 2000);
+          } else {
+            showPopup("error-popup", "Registration failed. Please try again.");
+          }
+        } catch (error) {
+          showPopup("error-popup", "Server error. Please try again.");
+        }
+      }
+
+      function showPopup(id, message) {
+        const popup = document.getElementById(id);
+        popup.textContent = message;
+        popup.classList.remove("hidden");
+
+        setTimeout(() => {
+          popup.classList.add("hidden");
+        }, 3000);
+      }
+    </script>
+  </body>
+</html>
