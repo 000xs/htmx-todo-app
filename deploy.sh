@@ -52,7 +52,16 @@ EOF
 
 # Create docker-compose.yml
 cat > docker-compose.yml <<EOF
-version: '3.8'
+# Install Docker Compose v2
+DOCKER_COMPOSE_VERSION="v2.27.0"
+# Correct download URL for Linux systems
+sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-$(uname -m)" \
+    -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+# Create updated docker-compose.yml
+cat > docker-compose.yml <<EOF
+version: '3.8'  # Keep this version if using Docker Compose v2.10+
 
 services:
   go-app:
@@ -67,7 +76,7 @@ services:
     image: nginx:alpine
     restart: always
     ports:
-      - "${NGINX_PORT}:80"
+      - "80:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
     depends_on:
@@ -78,6 +87,7 @@ services:
 networks:
   app-network:
     driver: bridge
+
 EOF
 
 # Create Nginx configuration
